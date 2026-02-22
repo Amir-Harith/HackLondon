@@ -1,0 +1,9 @@
+from pymongo import MongoClient
+import os
+
+client = MongoClient(os.getenv("MONGO_URI"))
+db = client['SeniorSocialApp']
+users_collection = db['users']
+
+def save_user_profile(name, interests):
+    users_collection.insert_one({"name": name, "interests": interests})

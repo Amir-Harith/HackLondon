@@ -1,0 +1,108 @@
+from google import genai
+import json
+import os
+from datetime import datetime
+
+API_KEY = "AIzaSyCHUXHhbJP0Jup3RRAtFts8RintlwoOJmU"
+client = genai.Client(api_key=API_KEY)
+
+SYSTEM_PROMPT = (
+    "Act as an interactive reflective journal. "
+    "Respond in 1–3 sentences. "
+    "Always ask a gentle follow-up question."
+)
+
+JSON_FILE = "journal.json"
+TXT_FILE = "journal.txt"
+
+
+# ---------- LOAD DATA ----------
+if os.path.exists(JSON_FILE):
+    with open(JSON_FILE, "r", encoding="utf-8") as f:
+        loaded = json.load(f)
+        # Handle old format (list) vs new format (dict)
+        if isinstance(loaded, list):
+            data = {
+                "history": loaded,
+                "moods": []
+            }
+        else:
+            data = loaded
+else:
+    data = {
+        "history": [{"role": "user", "parts": [{"text": SYSTEM_PROMPT}]}],
+        "moods": []
+    }
+
+history = data["history"]
+
+
+def save_all():
+    data["history"] = history
+    with open(JSON_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+
+def append_txt(role, text):
+    time = datetime.now().strftime("%Y-%m-%d %H:%M")
+    with open(TXT_FILE, "a", encoding="utf-8") as f:
+        f.write(f"[{time}] {role}: {text}\n")
+
+
+def add_mood(word):
+    entry = {
+        "time": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "emotion": word.lower()
+    }
+    data["moods"].append(entry)
+    save_all()
+    print(f"(saved mood: {word})\n")
+
+
+print("Interactive Journal")
+print("Commands:")
+print("  /mood happy")
+print("  quit\n")
+
+
+while True:
+    user_input = input("You: ").strip()
+
+    if user_input.lower() == "quit":
+        save_all()
+        print("Conversation saved.")
+        break
+
+    # -------- MOOD COMMAND --------
+    if user_input.startswith("/mood "):
+        mood_word = user_input[6:].strip()
+        if " " in mood_word or mood_word == "":
+            print("Please enter a single word emotion.\n")
+        else:
+            add_mood(mood_word)
+        continue
+
+    # -------- NORMAL CHAT --------
+    history.append({"role": "user", "parts": [{"text": user_input}]})
+    append_txt("You", user_input)
+
+    print("Journal: ", end="", flush=True)
+
+    response = client.models.generate_content_stream(
+        model="gemini-2.5-flash",
+        contents=history
+    )
+
+    assistant_text = ""
+
+    for chunk in response:
+        if chunk.text:
+            print(chunk.text, end="", flush=True)
+            assistant_text += chunk.text
+
+    print("\n")
+
+    history.append({"role": "model", "parts": [{"text": assistant_text}]})
+    append_txt("Journal", assistant_text)
+
+    save_all()
